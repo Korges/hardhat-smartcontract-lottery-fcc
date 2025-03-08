@@ -1,0 +1,20 @@
+{
+  "devDependencies": {
+    "@nomiclabs/hardhat-ethers": "npm:hardhat-deploy-ethers",
+    "@nomiclabs/hardhat-etherscan": "^3.1.8",
+    "@nomiclabs/hardhat-waffle": "^2.0.6",
+    "chai": "^5.2.0",
+    "dotenv": "^16.4.7",
+    "ethereum-waffle": "^4.0.10",
+    "ethers": "^6.13.5",
+    "hardhat": "^2.22.19",
+    "hardhat-contract-sizer": "^2.10.0",
+    "hardhat-deploy": "^0.14.0",
+    "hardhat-gas-reporter": "^2.2.2",
+    "prettier": "^3.5.3",
+    "prettier-plugin-solidity": "^1.4.2",
+    "solhint": "^5.0.5",
+    "solidity-coverage": "^0.8.14"
+  },
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
+}
