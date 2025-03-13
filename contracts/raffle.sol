@@ -1,77 +1,83 @@
-// Raffle
-// Enter the lottery (paying some amount)
-// Pick random winnder (verifiably random)
-// Winnger to be selected every X minutes -> completly automated
-// Chainlink Oracle -> Randomness, Automated Execution (Chainlink Keeper)
-
-
 // SPDX-License-Identifier: MIT
 
 pragma solidity ^0.8.7;
 
-import "@chainlink/contracts/src/v0.8/vrf/interfaces/VRFCoordinatorV2Interface.sol";
+import "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
 import "@chainlink/contracts/src/v0.8/vrf/VRFConsumerBaseV2.sol";
+// In the video, we use the following import statement, but newer versions of the Chainlink
+// contracts have a different file structure.
+// import "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2.sol";
 import "@chainlink/contracts/src/v0.8/automation/interfaces/AutomationCompatibleInterface.sol";
+import "hardhat/console.sol";
 
-error Raffle_NotEnoughETHEntered();
-error Raffle_TransferFailed();
-error Raffle_NotOpen();
+/* Errors */
 error Raffle__UpkeepNotNeeded(uint256 currentBalance, uint256 numPlayers, uint256 raffleState);
+error Raffle__TransferFailed();
+error Raffle__SendMoreToEnterRaffle();
+error Raffle__RaffleNotOpen();
 
-
+/**
+ * @title A sample Raffle Contract
+ * @author Patrick Collins
+ * @notice This contract is for creating a sample raffle contract
+ * @dev This implements the Chainlink VRF Version 2
+ */
 contract Raffle is VRFConsumerBaseV2, AutomationCompatibleInterface {
     /* Type declarations */
     enum RaffleState {
         OPEN,
         CALCULATING
     }
+    /* State variables */
+    // Chainlink VRF Variables
 
-    /* State Variables */
-    uint256 private immutable i_entranceFee;
-    address payable[] private s_players;
     VRFCoordinatorV2Interface private immutable i_vrfCoordinator;
-    bytes32 private immutable i_gasLane;
     uint64 private immutable i_subscriptionId;
+    bytes32 private immutable i_gasLane;
     uint32 private immutable i_callbackGasLimit;
     uint16 private constant REQUEST_CONFIRMATIONS = 3;
     uint32 private constant NUM_WORDS = 1;
 
     // Lottery Variables
-    address private s_recentWinner;
-    RaffleState private s_raffleState;
-    uint256 private s_lastTimeStamp;
     uint256 private immutable i_interval;
+    uint256 private immutable i_entranceFee;
+    uint256 private s_lastTimeStamp;
+    address private s_recentWinner;
+    address payable[] private s_players;
+    RaffleState private s_raffleState;
 
     /* Events */
-    event RaffleEnter(address indexed player);
-    event WinnerPicked(address indexed winner);
     event RequestedRaffleWinner(uint256 indexed requestId);
+    event RaffleEnter(address indexed player);
+    event WinnerPicked(address indexed player);
 
+    /* Functions */
     constructor(
         address vrfCoordinatorV2,
-        uint256 entranceFee,
-        bytes32 gasLane,
         uint64 subscriptionId,
-        uint32 callbackGasLimit,
-        uint256 interval
+        bytes32 gasLane, // keyHash
+        uint256 interval,
+        uint256 entranceFee,
+        uint32 callbackGasLimit
     ) VRFConsumerBaseV2(vrfCoordinatorV2) {
-        i_entranceFee = entranceFee;
         i_vrfCoordinator = VRFCoordinatorV2Interface(vrfCoordinatorV2);
         i_gasLane = gasLane;
+        i_interval = interval;
         i_subscriptionId = subscriptionId;
-        i_callbackGasLimit = callbackGasLimit;
+        i_entranceFee = entranceFee;
         s_raffleState = RaffleState.OPEN;
         s_lastTimeStamp = block.timestamp;
-        i_interval = interval;
+        i_callbackGasLimit = callbackGasLimit;
     }
 
     function enterRaffle() public payable {
-        // require (msg.value < i_entranceFee, 'Not enough ETH!")
+        // require(msg.value >= i_entranceFee, "Not enough value sent");
+        // require(s_raffleState == RaffleState.OPEN, "Raffle is not open");
         if (msg.value < i_entranceFee) {
-            revert Raffle_NotEnoughETHEntered();
+            revert Raffle__SendMoreToEnterRaffle();
         }
         if (s_raffleState != RaffleState.OPEN) {
-            revert Raffle_NotOpen();
+            revert Raffle__RaffleNotOpen();
         }
         s_players.push(payable(msg.sender));
         // Emit an event when we update a dynamic array or mapping
@@ -120,34 +126,29 @@ contract Raffle is VRFConsumerBaseV2, AutomationCompatibleInterface {
         emit RequestedRaffleWinner(requestId);
     }
 
-    function fulfillRandomWords(uint256 /*requestId */, uint256[] memory randomWords) internal override {
+    /**
+     * @dev This is the function that Chainlink VRF node
+     * calls to send the money to the random winner.
+     */
+    function fulfillRandomWords(uint256, /* requestId */ uint256[] memory randomWords) internal override {
+        // s_players size 10
+        // randomNumber 202
+        // 202 % 10 ? what's doesn't divide evenly into 202?
+        // 20 * 10 = 200
+        // 2
+        // 202 % 10 = 2
         uint256 indexOfWinner = randomWords[0] % s_players.length;
         address payable recentWinner = s_players[indexOfWinner];
         s_recentWinner = recentWinner;
+        s_players = new address payable[](0);
         s_raffleState = RaffleState.OPEN;
         s_lastTimeStamp = block.timestamp;
-        s_players = new address payable[](0);
-        (bool success, ) = recentWinner.call{value: address(this).balance}("");
-        // require
+        (bool success,) = recentWinner.call{value: address(this).balance}("");
+        // require(success, "Transfer failed");
         if (!success) {
-            revert Raffle_TransferFailed();
+            revert Raffle__TransferFailed();
         }
         emit WinnerPicked(recentWinner);
-    }
-
-    function requestRandomWinner() external {
-        // Request the random number
-        // Once we get it, do something with it
-        // 2 transaction process
-        s_raffleState = RaffleState.CALCULATING;
-        uint256 requestId = i_vrfCoordinator.requestRandomWords(
-            i_gasLane,
-            i_subscriptionId,
-            REQUEST_CONFIRMATIONS,
-            i_callbackGasLimit,
-            NUM_WORDS
-        );
-        emit RequestedRaffleWinner(requestId);
     }
 
     /**
